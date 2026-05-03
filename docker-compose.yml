@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: contest_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d contest_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/contest_db
+      NEXTAUTH_URL: http://localhost:3000
+      AUTH_SECRET: change-me-use-openssl-rand-base64-32
+      NEXTAUTH_SECRET: change-me-use-openssl-rand-base64-32
+      NEXT_PUBLIC_APP_NAME: Best Restaurant Contest 2025
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      RESEND_API_KEY: ""
+      SMTP_HOST: ""
+      SMTP_PORT: "1025"
+      SMTP_FROM: noreply@contest.com
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      # .next is intentionally NOT mounted as a volume — cross-platform cache
+      # corruption (Windows host / Linux container) causes manifest parse errors.
+      # Next.js rebuilds .next inside the container on each start instead.
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "
+        npm install --legacy-peer-deps &&
+        npx prisma generate &&
+        npx prisma db push --accept-data-loss &&
+        npx prisma db seed &&
+        npm run dev
+      "
+
+volumes:
+  postgres_data:
+  node_modules:
